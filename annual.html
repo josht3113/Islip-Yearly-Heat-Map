@@ -15,7 +15,9 @@ var ce=React.createElement;
 var useState=React.useState;
 var useMemo=React.useMemo;
 var useEffect=React.useEffect;
+var useRef=React.useRef;
 
+// ── SHARED CONSTANTS (keep in sync with index.html) ───────────────────────────
 var BASE='https://josht3113.github.io/Islip-Yearly-Heat-Map/';
 var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var HOURS=['Midnight','1','2','3','4','5','6','7','8','9','10','11','Noon','1','2','3','4','5','6','7','8','9','10','11'];
@@ -35,12 +37,12 @@ var DTYPES=[
 ];
 
 var SCALES={
-  temp:     {vals:[-5,25,50,75,102],        cols:['#FFB3C6','#A8D4F0','#5DBF6A','#FFE033','#D41A1A']},
-  td:       {vals:[-25,5,18,30,55,68,80],   cols:['#4A3410','#B89870','#D4C060','#FFEE00','#3DB84A','#2A8C30','#2A72C8']},
-  clouds:   {vals:[1,2,3,4,5],              cols:['#F5FA82','#C5C46A','#848477','#626258','#404040']},
-  wind:     {vals:[0,5,10,15,20,25,30,55],  cols:['#232323','#545E6B','#7D9BB5','#B4C8E3','#CEB8CC','#E09999','#E3625C','#FFE033']},
+  temp:     {vals:[-5,25,50,75,102],          cols:['#FFB3C6','#A8D4F0','#5DBF6A','#FFE033','#D41A1A']},
+  td:       {vals:[-25,5,18,30,55,68,80],     cols:['#4A3410','#B89870','#D4C060','#FFEE00','#3DB84A','#2A8C30','#2A72C8']},
+  clouds:   {vals:[1,2,3,4,5],                cols:['#F5FA82','#C5C46A','#848477','#626258','#404040']},
+  wind:     {vals:[0,5,10,15,20,25,30,55],    cols:['#232323','#545E6B','#7D9BB5','#B4C8E3','#CEB8CC','#E09999','#E3625C','#FFE033']},
   temp_anom:{vals:[-40,-24,-16,-10,-4,0,4,10,16,24,40],cols:['#FFB3C6','#6AAACF','#3E7AAA','#1E4A72','#0D2238','#0D1218','#38120A','#962010','#D03A18','#F05030','#FFE000']},
-  td_anom:  {vals:[-30,-15,-5,0,5,15,30],  cols:['#C8920A','#8C6208','#3D2A02','#2B2200','#2A3800','#4A6A00','#7DC840']},
+  td_anom:  {vals:[-30,-15,-5,0,5,15,30],     cols:['#C8920A','#8C6208','#3D2A02','#2B2200','#2A3800','#4A6A00','#7DC840']},
   temp_z:   {vals:[-5,-3,-2,-1.2,-0.5,0,0.5,1.2,2,3,5],cols:['#FFB3C6','#6AAACF','#3E7AAA','#1E4A72','#0D2238','#0D1218','#38120A','#962010','#D03A18','#F05030','#FFE000']},
   td_z:     {vals:[-5,-3,-2,-1.2,-0.5,0,0.5,1.2,2,3,5],cols:['#FFB3C6','#68A8CC','#3C78A8','#1C4870','#0C2036','#0D1218','#38120A','#942010','#CC3816','#EE4E2E','#FFE000']}
 };
@@ -66,16 +68,20 @@ function gradCss(sc){
   return 'linear-gradient(to right,'+sc.cols.map(function(c,i){return c+' '+((sc.vals[i]-lo)/span*100).toFixed(1)+'%';}).join(',')+')';
 }
 
-var CW=4; var CH=20; var LW=48;
-var CW_M=6; var CH_M=22; var LW_M=56;
+// ── ANNUAL-SPECIFIC CONSTANTS ─────────────────────────────────────────────────
+var CW=4;
+var CH=20;
+var LW=48;
 var NDDAYS_STD=[31,28,31,30,31,30,31,31,30,31,30,31];
 
+// ── DATA ACCESSORS ────────────────────────────────────────────────────────────
 function yearVal(data,mIdx,field,h,d){
   var md=data&&data[MONTHS[mIdx]];
   if(!md||!md[field]){return null;}
   var row=md[field][h];
   return(row&&row[d]!=null)?row[d]:null;
 }
+
 function multiVal(yearsData,mIdx,field,h,d){
   var sum=0,cnt=0;
   for(var i=0;i<yearsData.length;i++){
@@ -87,36 +93,101 @@ function multiVal(yearsData,mIdx,field,h,d){
   }
   return cnt?sum/cnt:null;
 }
+
 function buildDayInfo(nDays){
   var info=[];
-  for(var m=0;m<12;m++){for(var d=0;d<nDays[m];d++){info.push({mIdx:m,d:d});}}
+  for(var m=0;m<12;m++){
+    for(var d=0;d<nDays[m];d++){
+      info.push({mIdx:m,d:d});
+    }
+  }
   return info;
 }
 
-function App(){
-  var s1=useState('single');   var mode=s1[0],      setMode=s1[1];
-  var s2=useState(2024);       var year=s2[0],      setYear=s2[1];
-  var s3=useState(1991);       var fromY=s3[0],     setFromY=s3[1];
-  var s4=useState(2020);       var toY=s4[0],       setToY=s4[1];
-  var s5=useState('temp');     var dt=s5[0],        setDt=s5[1];
-  var s6=useState(null);       var sData=s6[0],     setSData=s6[1];
-  var s7=useState([]);         var mData=s7[0],     setMData=s7[1];
-  var s8=useState(false);      var loading=s8[0],   setLoading=s8[1];
-  var s9=useState(null);       var err=s9[0],       setErr=s9[1];
-  var s10=useState(0);         var prog=s10[0],     setProg=s10[1];
-  var s11=useState('');        var mLabel=s11[0],   setMLabel=s11[1];
-  var s12=useState(false);     var modalOpen=s12[0],setModalOpen=s12[1];
-  var s13=useState('');        var copyMsg=s13[0],  setCopyMsg=s13[1];
+// ── CANVAS RENDERER (used for modal + Copy Image) ─────────────────────────────
+function drawGrid(canvas,colorGrid,nDays,dayInfo,cw,ch){
+  if(!canvas||!colorGrid){return;}
+  var lw=56,hdrH=22;
+  var totalW=lw+dayInfo.length*cw;
+  var totalH=hdrH+24*ch;
+  canvas.width=totalW;
+  canvas.height=totalH;
+  var ctx=canvas.getContext('2d');
 
+  ctx.fillStyle='#0A0A0A';
+  ctx.fillRect(0,0,totalW,totalH);
+
+  // Month headers
+  ctx.textBaseline='middle';
+  ctx.textAlign='center';
+  ctx.fillStyle='#FFD700';
+  ctx.font='bold 11px Segoe UI,system-ui,sans-serif';
+  var x=lw;
+  for(var m=0;m<12;m++){
+    ctx.fillText(MONTHS[m],x+nDays[m]*cw/2,hdrH/2);
+    x+=nDays[m]*cw;
+  }
+
+  // Hour labels + cells
+  for(var h=0;h<24;h++){
+    var y=hdrH+h*ch;
+    ctx.font='bold 9px Segoe UI,system-ui,sans-serif';
+    ctx.fillStyle='#ffffff';
+    ctx.textAlign='right';
+    ctx.fillText(HOURS[h],lw-3,y+ch/2);
+    for(var D=0;D<dayInfo.length;D++){
+      ctx.fillStyle=colorGrid[h][D];
+      ctx.fillRect(lw+D*cw,y,cw,ch);
+    }
+  }
+
+  // Month boundary lines
+  ctx.strokeStyle='rgba(255,255,255,0.25)';
+  ctx.lineWidth=1;
+  x=lw;
+  for(var m=0;m<11;m++){
+    x+=nDays[m]*cw;
+    ctx.beginPath();
+    ctx.moveTo(x+0.5,hdrH);
+    ctx.lineTo(x+0.5,totalH);
+    ctx.stroke();
+  }
+
+  // Outer border
+  ctx.strokeStyle='rgba(255,255,255,0.85)';
+  ctx.lineWidth=1.5;
+  ctx.strokeRect(lw,hdrH,dayInfo.length*cw,24*ch);
+}
+
+// ── APP ───────────────────────────────────────────────────────────────────────
+function App(){
+  var s1 =useState('single');  var mode=s1[0],    setMode=s1[1];
+  var s2 =useState(2024);      var year=s2[0],    setYear=s2[1];
+  var s3 =useState(1991);      var fromY=s3[0],   setFromY=s3[1];
+  var s4 =useState(2020);      var toY=s4[0],     setToY=s4[1];
+  var s5 =useState('temp');    var dt=s5[0],      setDt=s5[1];
+  var s6 =useState(null);      var sData=s6[0],   setSData=s6[1];
+  var s7 =useState([]);        var mData=s7[0],   setMData=s7[1];
+  var s8 =useState(false);     var loading=s8[0], setLoading=s8[1];
+  var s9 =useState(null);      var err=s9[0],     setErr=s9[1];
+  var s10=useState(0);         var prog=s10[0],   setProg=s10[1];
+  var s11=useState('');        var mLabel=s11[0], setMLabel=s11[1];
+  var s12=useState(false);     var modalOpen=s12[0],setModalOpen=s12[1];
+  var s13=useState('');        var copyMsg=s13[0], setCopyMsg=s13[1];
+
+  var modalCanvasRef=useRef(null);
+
+  // ── data loading: single year ──
   useEffect(function(){
     if(mode!=='single'){return;}
     setLoading(true);setErr(null);setSData(null);
     fetch(BASE+year+'.json')
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
-.then(function(t){setSData(JSON.parse(t.replace(/\bNaN\b/g,'null')));setLoading(false);})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(d){setSData(d);setLoading(false);})
       .catch(function(e){setErr(e.message);setLoading(false);});
   },[mode,year]);
 
+  // ── data loading: multi-year ──
   function loadMultiYear(fy,ty){
     setLoading(true);setErr(null);setMData([]);setProg(0);
     var ys=[];for(var y=fy;y<=ty;y++){ys.push(y);}
@@ -124,16 +195,17 @@ function App(){
     setMLabel(fy+'\u2013'+ty);
     function next(){
       if(idx>=total){setMData(loaded);setLoading(false);return;}
-      var y=ys[idx];
-      fetch(BASE+y+'.json')
-        .then(function(r){return r.ok?r.text():Promise.reject('HTTP '+r.status);})
-.then(function(t){loaded.push(JSON.parse(t.replace(/\bNaN\b/g,'null')));})
+      var yr=ys[idx];
+      fetch(BASE+yr+'.json')
+        .then(function(r){return r.ok?r.json():Promise.reject('HTTP '+r.status);})
+        .then(function(d){loaded.push(d);})
         .catch(function(){})
         .finally(function(){idx++;setProg(Math.round(idx/total*100));next();});
     }
     next();
   }
 
+  // ── derived state ──────────────────────────────────────────────────────────
   var sc=SCALES[dt];
   var lo=sc.vals[0],hi=sc.vals[sc.vals.length-1];
   var isAnom=dt==='temp_anom'||dt==='td_anom'||dt==='temp_z'||dt==='td_z';
@@ -149,12 +221,15 @@ function App(){
 
   var dtLabel='';
   for(var di=0;di<DTYPES.length;di++){if(DTYPES[di].id===dt){dtLabel=DTYPES[di].label;break;}}
+
   var modeLabel=mode==='single'?String(year):'Multi-Year Avg '+mLabel;
 
   var colorGrid=useMemo(function(){
     var ready=(mode==='single'&&!!sData)||(mode==='multiyear'&&mData.length>0);
     if(!ready){return null;}
     var nd=dayInfo.length;
+
+    // Pass 1: raw values
     var raw=[];
     for(var h=0;h<24;h++){
       var row=[];
@@ -166,6 +241,8 @@ function App(){
       }
       raw.push(row);
     }
+
+    // Pass 2: null-fill via neighbor average
     for(var h=0;h<24;h++){
       for(var D=0;D<nd;D++){
         if(raw[h][D]!=null){continue;}
@@ -177,205 +254,251 @@ function App(){
         if(cnt>0){raw[h][D]=sum/cnt;}
       }
     }
+
+    // Pass 3: values → colors
     var rows=[];
-    for(var h=0;h<24;h++){rows.push(raw[h].map(function(v){return getColor(v,sc);}));}
+    for(var h=0;h<24;h++){
+      rows.push(raw[h].map(function(v){return getColor(v,sc);}));
+    }
     return rows;
   },[mode,dt,sData,mData,dayInfo,sc]);
 
+  // Draw to modal canvas when modal opens or data changes
+  useEffect(function(){
+    if(!modalOpen||!colorGrid||!modalCanvasRef.current){return;}
+    drawGrid(modalCanvasRef.current,colorGrid,nDays,dayInfo,6,26);
+  },[modalOpen,colorGrid,nDays,dayInfo]);
+
+  // Copy Image
   function copyImage(){
-    if(!colorGrid){return;}
-    var MHDR=18,cw=LW_M+dayInfo.length*CW_M,ch=MHDR+24*CH_M;
-    var canvas=document.createElement('canvas');
-    canvas.width=cw;canvas.height=ch;
-    var ctx=canvas.getContext('2d');
-    ctx.fillStyle='#0A0A0A';ctx.fillRect(0,0,cw,ch);
-    ctx.font='bold 11px '+FONT;ctx.fillStyle='#FFD700';ctx.textAlign='center';
-    var col=LW_M;
-    for(var mi=0;mi<12;mi++){var mw=nDays[mi]*CW_M;ctx.fillText(MONTHS[mi],col+mw/2,13);col+=mw;}
-    ctx.font='bold 10px '+FONT;ctx.fillStyle='#ffffff';ctx.textAlign='right';
-    for(var h=0;h<24;h++){ctx.fillText(HOURS[h],LW_M-4,MHDR+h*CH_M+CH_M*0.68);}
-    for(var h=0;h<24;h++){
-      for(var D=0;D<dayInfo.length;D++){
-        ctx.fillStyle=colorGrid[h][D];
-        ctx.fillRect(LW_M+D*CW_M,MHDR+h*CH_M,CW_M,CH_M);
-      }
-    }
+    var canvas=modalCanvasRef.current;
+    if(!canvas){return;}
     canvas.toBlob(function(blob){
-      if(!blob){setCopyMsg('Failed');return;}
+      if(!blob){setCopyMsg('Failed');setTimeout(function(){setCopyMsg('');},2000);return;}
       try{
-        navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){
-          setCopyMsg('Copied!');setTimeout(function(){setCopyMsg('');},2000);
-        }).catch(function(){
-          setCopyMsg('Not supported on this browser');setTimeout(function(){setCopyMsg('');},3000);
-        });
-      }catch(e){setCopyMsg('Not supported on this browser');setTimeout(function(){setCopyMsg('');},3000);}
+        navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+        setCopyMsg('Copied!');
+      }catch(e){
+        setCopyMsg('Not supported on this device');
+      }
+      setTimeout(function(){setCopyMsg('');},2500);
     },'image/png');
   }
 
-  var BCELL='1px solid rgba(0,0,0,0.18)';
-  var MBORDER='1px solid rgba(255,255,255,0.35)';
+  // ── render helpers ─────────────────────────────────────────────────────────
+  var BCELL='1px solid rgba(0,0,0,0.18)';   // faint inter-cell separator
+  var MBORDER='1px solid rgba(255,255,255,0.28)'; // month boundary
 
   function btnStyle(active){
     return {background:active?'#1a3050':'#111',border:'1px solid '+(active?'#4da6ff':'#2a2a2a'),
-      color:active?'#7ec8ff':'#8899aa',padding:'3px 9px',fontSize:14,cursor:'pointer',borderRadius:2,fontFamily:FONT};
+      color:active?'#7ec8ff':'#8899aa',padding:'4px 10px',fontSize:14,cursor:'pointer',
+      borderRadius:2,fontFamily:FONT};
   }
   function selStyle(){
     return {background:'#1a1a1a',border:'1px solid #333',color:'#7ec8ff',
-      padding:'3px 6px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700};
+      padding:'3px 6px',fontSize:13,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700};
   }
 
-  function buildGridRows(cw,ch,lw){
-    var rows=[];
-    var hdrCells=[ce('div',{key:'lw',style:{width:lw,flexShrink:0}})];
-    for(var mi=0;mi<12;mi++){
-      hdrCells.push(ce('div',{key:mi,style:{
-        width:nDays[mi]*cw,flexShrink:0,textAlign:'center',
-        color:'#FFD700',fontSize:11,fontWeight:700,paddingBottom:3,
-        borderLeft:mi>0?MBORDER:'none',userSelect:'none'
-      }},MONTHS[mi]));
-    }
-    rows.push(ce('div',{key:'mhdr',style:{display:'flex',background:'#0A0A0A',marginBottom:1}},hdrCells));
-    for(var h=0;h<24;h++){
-      var rowCells=[];
-      rowCells.push(ce('div',{key:'hl',style:{
-        width:lw,flexShrink:0,textAlign:'right',paddingRight:6,
-        color:'#fff',fontSize:10,fontWeight:700,lineHeight:ch+'px',
-        background:'#0A0A0A',userSelect:'none'
-      }},HOURS[h]));
-      for(var D=0;D<dayInfo.length;D++){
-        var inf=dayInfo[D];
-        var isFirst=inf.d===0&&D>0;
-        var isLast=inf.d===nDays[inf.mIdx]-1;
-        rowCells.push(ce('div',{key:D,style:{
-          width:cw,height:ch,flexShrink:0,
-          background:colorGrid[h][D],
-          borderLeft:isFirst?MBORDER:'none',
-          borderRight:(!isLast&&D<dayInfo.length-1)?BCELL:'none',
-          borderBottom:h<23?BCELL:'none'
-        }}));
-      }
-      rows.push(ce('div',{key:h,style:{display:'flex'}},rowCells));
-    }
-    return rows;
-  }
-
+  // ── build output ───────────────────────────────────────────────────────────
   var out=[];
+
   var titleStr='Islip, NY \u2502 '+dtLabel+' \u2502 '+modeLabel;
-
   out.push(ce('div',{key:'ti',style:{marginBottom:8}},
-    ce('div',{style:{color:'#fff',fontSize:22,fontWeight:700}},titleStr)));
+    ce('div',{style:{color:'#fff',fontSize:22,fontWeight:700}},titleStr)
+  ));
 
+  // Nav + mode buttons
   out.push(ce('div',{key:'nav',style:{display:'flex',gap:6,alignItems:'center',marginBottom:8,flexWrap:'wrap'}},
-    ce('a',{href:'index.html',style:{color:'#4da6ff',fontSize:13,textDecoration:'none',marginRight:4}},'← Monthly'),
     ['single','multiyear'].map(function(m){
-      return ce('button',{key:m,onClick:function(){if(m!=='single'&&isAnom){setDt('temp');}setMode(m);},style:btnStyle(m===mode)},
+      return ce('button',{key:m,onClick:function(){
+        if(m!=='single'&&isAnom){setDt('temp');}
+        setMode(m);
+      },style:btnStyle(m===mode)},
         m==='single'?'Single Year':'Multi-Year Avg');
     })
   ));
 
+  // Year selector (single)
   if(mode==='single'){
     out.push(ce('div',{key:'yr',style:{marginBottom:8}},
-      ce('label',{style:{fontSize:13,color:'#888',marginRight:8}},'Year:'),
+      ce('label',{style:{fontSize:12,color:'#888',marginRight:8}},'Year:'),
       ce('select',{value:year,onChange:function(e){setYear(Number(e.target.value));},style:selStyle()},
         YEARS.map(function(y){return ce('option',{key:y,value:y},y);}))
     ));
   }
 
+  // Year range + load (multiyear)
   if(mode==='multiyear'){
     out.push(ce('div',{key:'yrs',style:{display:'flex',gap:8,alignItems:'center',marginBottom:8,flexWrap:'wrap'}},
-      ce('label',{style:{fontSize:13,color:'#888'}},'From:'),
+      ce('label',{style:{fontSize:12,color:'#888'}},'From:'),
       ce('select',{value:fromY,onChange:function(e){setFromY(Number(e.target.value));},style:selStyle()},
         YEARS.map(function(y){return ce('option',{key:y,value:y},y);})),
-      ce('label',{style:{fontSize:13,color:'#888'}},'To:'),
+      ce('label',{style:{fontSize:12,color:'#888'}},'To:'),
       ce('select',{value:toY,onChange:function(e){setToY(Number(e.target.value));},style:selStyle()},
         YEARS.map(function(y){return ce('option',{key:y,value:y},y);})),
-      ce('button',{onClick:function(){loadMultiYear(fromY,toY);},style:{
-        background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
-        padding:'3px 10px',fontSize:13,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700
-      }},'Load'),
-      ce('span',{style:{fontSize:12,color:'#555',marginLeft:2}},'Presets:'),
+      ce('button',{onClick:function(){loadMultiYear(fromY,toY);},
+        style:{background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
+          padding:'4px 10px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700}},'Load'),
+      ce('span',{style:{fontSize:11,color:'#555',marginLeft:2}},'Presets:'),
       [[1991,2020],[2001,2020],[2011,2020]].map(function(p){
-        return ce('button',{key:p[0],onClick:function(){setFromY(p[0]);setToY(p[1]);},style:{
-          background:'#111',border:'1px solid #2a2a2a',color:'#8899aa',
-          padding:'2px 6px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT
-        }},p[0]+'\u2013'+p[1]);
+        return ce('button',{key:p[0],onClick:function(){setFromY(p[0]);setToY(p[1]);},
+          style:{background:'#111',border:'1px solid #2a2a2a',color:'#8899aa',
+            padding:'3px 7px',fontSize:11,cursor:'pointer',borderRadius:2,fontFamily:FONT}},
+          p[0]+'\u2013'+p[1]);
       })
     ));
   }
 
-  var avail=DTYPES.filter(function(d2){if(mode==='multiyear'&&d2.singleOnly){return false;}return true;});
+  // Field type buttons
+  var avail=DTYPES.filter(function(d2){return mode==='single'||!d2.singleOnly;});
   out.push(ce('div',{key:'dts',style:{display:'flex',alignItems:'center',gap:4,marginBottom:8,flexWrap:'wrap'}},
     avail.map(function(d2){
       return ce('button',{key:d2.id,onClick:function(){setDt(d2.id);},style:{
         background:d2.id===dt?'#111a0a':'#111',
         border:'1px solid '+(d2.id===dt?'#FFD700':'#2a2a2a'),
         color:d2.id===dt?'#FFD700':'#8899aa',
-        padding:'2px 7px',fontSize:11,cursor:'pointer',borderRadius:2,fontFamily:FONT,whiteSpace:'nowrap'
+        padding:'3px 8px',fontSize:11,cursor:'pointer',borderRadius:2,fontFamily:FONT,whiteSpace:'nowrap'
       }},d2.label);
     })
   ));
 
-  if(loading){out.push(ce('div',{key:'ld',style:{color:'#4da6ff',padding:'20px 0'}},mode==='multiyear'?('Loading years\u2026 '+prog+'%'):'Loading\u2026'));}
+  // Loading / error / empty states
+  if(loading){
+    out.push(ce('div',{key:'ld',style:{color:'#4da6ff',padding:'20px 0'}},
+      mode==='multiyear'?('Loading years\u2026 '+prog+'%'):'Loading\u2026'
+    ));
+  }
   if(err){out.push(ce('div',{key:'er',style:{color:'#f66',padding:'10px 0'}},'Error: '+err));}
   if(mode==='multiyear'&&!loading&&mData.length===0&&!err){
-    out.push(ce('div',{key:'empty',style:{color:'#888',fontSize:12,padding:'20px 0'}},'Select a year range and click Load.'));
+    out.push(ce('div',{key:'empty',style:{color:'#888',fontSize:12,padding:'20px 0'}},
+      'Select a year range and click Load.'
+    ));
   }
 
+  // ── MAIN GRID ───────────────────────────────────────────────────────────────
   if(colorGrid){
     var chartW=LW+dayInfo.length*CW;
+
+
+
+    // Legend — right-aligned, width matches chart
     out.push(ce('div',{key:'legrow',style:{
-      width:chartW,maxWidth:'100%',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:8,marginBottom:4
+      width:chartW,maxWidth:'100%',
+      display:'flex',alignItems:'center',justifyContent:'flex-end',
+      gap:8,marginBottom:4
     }},
       ce('span',{style:{fontSize:11,color:'#888'}},String(lo)),
-      ce('div',{style:{height:12,width:180,background:gradCss(sc),border:'1px solid rgba(255,255,255,0.1)',flexShrink:0}}),
+      ce('div',{style:{height:12,width:180,background:gradCss(sc),
+        border:'1px solid rgba(255,255,255,0.1)',flexShrink:0}}),
       ce('span',{style:{fontSize:11,color:'#888'}},String(hi))
     ));
+
+    var gridRows=[];
+
+    // Month header row — borderLeft on each month except Jan
+    var hdrCells=[ce('div',{key:'lw',style:{width:LW,flexShrink:0}})];
+    for(var mi=0;mi<12;mi++){
+      hdrCells.push(ce('div',{key:mi,style:{
+        width:nDays[mi]*CW,flexShrink:0,
+        textAlign:'center',
+        color:'#FFD700',fontSize:11,fontWeight:700,paddingBottom:3,
+        userSelect:'none',
+        borderLeft:mi>0?MBORDER:'none'
+      }},MONTHS[mi]));
+    }
+    gridRows.push(ce('div',{key:'mhdr',style:{display:'flex',background:'#0A0A0A',marginBottom:1}},hdrCells));
+
+    // Data rows: one per hour
+    for(var rh=0;rh<24;rh++){
+      var rowCells=[];
+      rowCells.push(ce('div',{key:'hl',style:{
+        width:LW,flexShrink:0,
+        textAlign:'right',paddingRight:6,
+        color:'#fff',fontSize:10,fontWeight:700,
+        lineHeight:CH+'px',background:'#0A0A0A',userSelect:'none'
+      }},HOURS[rh]));
+
+      for(var D=0;D<dayInfo.length;D++){
+        var inf=dayInfo[D];
+        // isFirst: first day of a new month (not the very first column)
+        var isFirst=D>0&&inf.d===0;
+        // isLast: last day of a month (next column starts a new month)
+        var isLast=D<dayInfo.length-1&&dayInfo[D+1].d===0;
+
+        rowCells.push(ce('div',{key:D,style:{
+          width:CW,height:CH,flexShrink:0,
+          background:colorGrid[rh][D],
+          // Month boundary: single left border on first day of new month.
+          // Last day of outgoing month gets no right border to avoid doubling.
+          borderLeft:isFirst?MBORDER:'none',
+          borderRight:(!isLast&&D<dayInfo.length-1)?BCELL:'none',
+          borderBottom:rh<23?BCELL:'none'
+        }}));
+      }
+      gridRows.push(ce('div',{key:rh,style:{display:'flex'}},rowCells));
+    }
+
+    // Wrap grid — click to open lightbox
     out.push(ce('div',{key:'scroll',
-      style:{overflowX:'auto',marginBottom:8,cursor:'zoom-in'},
-      onClick:function(){setModalOpen(true);}},
-      ce('div',{style:{display:'inline-block',border:'1.5px solid rgba(255,255,255,0.85)',borderRadius:2,overflow:'hidden'}},
-        buildGridRows(CW,CH,LW)
+      style:{overflowX:'auto',marginBottom:8,cursor:'pointer'},
+      onClick:function(){setModalOpen(true);},
+      title:'Click to expand'
+    },
+      ce('div',{style:{display:'inline-block',border:'1.5px solid rgba(255,255,255,0.85)',
+        borderRadius:2,overflow:'hidden'}},
+        gridRows
       )
     ));
   }
 
-  out.push(ce('div',{key:'ft',style:{marginTop:10,fontSize:11,color:'#888',display:'flex',alignItems:'center'},
+  // Footer
+  out.push(ce('div',{key:'ft',style:{marginTop:10,fontSize:11,color:'#888',
+    display:'flex',alignItems:'center'},
     dangerouslySetInnerHTML:{__html:'Eastern Daylight Time\u2002|\u2002Data: IEM & NOAA\u2002|\u2002'+LOGO_SVG}}));
 
-  if(modalOpen&&colorGrid){
+  // ── LIGHTBOX MODAL ─────────────────────────────────────────────────────────
+  if(modalOpen){
     out.push(ce('div',{key:'overlay',
-      onClick:function(){setModalOpen(false);setCopyMsg('');},
-      style:{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.88)',
-        zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:12}},
-      ce('div',{onClick:function(e){e.stopPropagation();},style:{
-        background:'#0A0A0A',border:'1.5px solid rgba(255,255,255,0.5)',borderRadius:4,
-        padding:'10px 12px 12px',maxWidth:'96vw',maxHeight:'92vh',
+      onClick:function(e){if(e.target===e.currentTarget){setModalOpen(false);setCopyMsg('');}},
+      style:{
+        position:'fixed',top:0,left:0,right:0,bottom:0,
+        background:'rgba(0,0,0,0.88)',
+        display:'flex',alignItems:'center',justifyContent:'center',
+        zIndex:1000,padding:12
+      }
+    },
+      ce('div',{style:{
+        background:'#0A0A0A',border:'1.5px solid rgba(255,255,255,0.85)',
+        borderRadius:4,padding:12,
+        maxWidth:'98vw',maxHeight:'96vh',
         display:'flex',flexDirection:'column',gap:8
       }},
-        ce('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}},
-          ce('span',{style:{color:'#fff',fontSize:13,fontWeight:700,fontFamily:FONT}},titleStr),
+        // Modal toolbar
+        ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},
+          ce('span',{style:{color:'#ccc',fontSize:13,fontFamily:FONT}},
+            'Islip, NY \u2502 '+dtLabel+' \u2502 '+modeLabel),
           ce('div',{style:{display:'flex',gap:8,alignItems:'center'}},
             ce('button',{onClick:copyImage,style:{
               background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
-              padding:'3px 12px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700
+              padding:'4px 12px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700
             }},'Copy Image'),
-            copyMsg?ce('span',{style:{fontSize:11,color:'#aaa',whiteSpace:'nowrap'}},copyMsg):null,
+            copyMsg?ce('span',{style:{color:'#7DC840',fontSize:11,fontFamily:FONT}},copyMsg):null,
             ce('button',{onClick:function(){setModalOpen(false);setCopyMsg('');},style:{
-              background:'#1a1a1a',border:'1px solid #444',color:'#ccc',
-              padding:'3px 10px',fontSize:14,cursor:'pointer',borderRadius:2,fontFamily:FONT
+              background:'#111',border:'1px solid #444',color:'#aaa',
+              padding:'4px 10px',fontSize:14,cursor:'pointer',borderRadius:2,fontFamily:FONT
             }},'\u2715')
           )
         ),
+        // Canvas (scrollable)
         ce('div',{style:{overflowX:'auto',overflowY:'auto'}},
-          ce('div',{style:{display:'inline-block',border:'1px solid rgba(255,255,255,0.3)',borderRadius:2,overflow:'hidden'}},
-            buildGridRows(CW_M,CH_M,LW_M)
-          )
+          ce('canvas',{ref:modalCanvasRef,style:{display:'block'}})
         )
       )
     ));
   }
 
-  return ce('div',{style:{background:'#0A0A0A',minHeight:'100vh',padding:'14px 12px',fontFamily:FONT,color:'#e0e0e0'}},out);
+  return ce('div',{style:{background:'#0A0A0A',minHeight:'100vh',
+    padding:'14px 12px',fontFamily:FONT,color:'#e0e0e0'}},out);
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(ce(App,null));
