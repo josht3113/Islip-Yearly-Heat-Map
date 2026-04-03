@@ -242,15 +242,16 @@ function App(){
       raw.push(row);
     }
 
-    // Pass 2: null-fill via neighbor average
+    // Pass 2: null-fill via neighbor average (same month only)
     for(var h=0;h<24;h++){
       for(var D=0;D<nd;D++){
         if(raw[h][D]!=null){continue;}
+        var mI=dayInfo[D].mIdx;
         var sum=0,cnt=0;
         if(h>0    &&raw[h-1][D]!=null){sum+=raw[h-1][D];cnt++;}
         if(h<23   &&raw[h+1][D]!=null){sum+=raw[h+1][D];cnt++;}
-        if(D>0    &&raw[h][D-1]!=null){sum+=raw[h][D-1];cnt++;}
-        if(D<nd-1 &&raw[h][D+1]!=null){sum+=raw[h][D+1];cnt++;}
+        if(D>0    &&dayInfo[D-1].mIdx===mI&&raw[h][D-1]!=null){sum+=raw[h][D-1];cnt++;}
+        if(D<nd-1 &&dayInfo[D+1].mIdx===mI&&raw[h][D+1]!=null){sum+=raw[h][D+1];cnt++;}
         if(cnt>0){raw[h][D]=sum/cnt;}
       }
     }
