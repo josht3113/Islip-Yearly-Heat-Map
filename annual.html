@@ -162,7 +162,7 @@ function drawGrid(canvas,colorGrid,nDays,dayInfo,cw,ch){
 // ── APP ───────────────────────────────────────────────────────────────────────
 function App(){
   var s1 =useState('single');  var mode=s1[0],    setMode=s1[1];
-  var s2 =useState(2024);      var year=s2[0],    setYear=s2[1];
+  var s2 =useState(new Date().getFullYear());      var year=s2[0],    setYear=s2[1];
   var s3 =useState(1991);      var fromY=s3[0],   setFromY=s3[1];
   var s4 =useState(2020);      var toY=s4[0],     setToY=s4[1];
   var s5 =useState('temp');    var dt=s5[0],      setDt=s5[1];
@@ -269,6 +269,92 @@ function App(){
     if(!modalOpen||!colorGrid||!modalCanvasRef.current){return;}
     drawGrid(modalCanvasRef.current,colorGrid,nDays,dayInfo,6,26);
   },[modalOpen,colorGrid,nDays,dayInfo]);
+
+  // Download PNG — builds composite canvas: title + scale bar + grid + footer
+  function downloadPNG(){
+    if(!colorGrid){return;}
+    var cw=6,ch=26;
+    var lw=56,gridHdrH=22;
+    var gridW=lw+dayInfo.length*cw;
+    var gridH=gridHdrH+24*ch;
+    var PAD=8;
+    var titleH=38;
+    var anomH=(isAnom&&mode==='single')?16:0;
+    var scaleH=28;
+    var footH=22;
+    var totalW=gridW+PAD*2;
+    var totalH=titleH+anomH+scaleH+gridH+footH;
+    var SCALE=2;
+
+    var comp=document.createElement('canvas');
+    comp.width=totalW*SCALE;
+    comp.height=totalH*SCALE;
+    var ctx=comp.getContext('2d');
+    ctx.scale(SCALE,SCALE);
+
+    // Background
+    ctx.fillStyle='#0A0A0A';
+    ctx.fillRect(0,0,totalW,totalH);
+
+    // Title
+    ctx.font='bold 14px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#ffffff';
+    ctx.textBaseline='middle';
+    ctx.textAlign='left';
+    ctx.fillText('Islip, NY  \u2502  '+dtLabel+'  \u2502  '+modeLabel,PAD,titleH/2);
+
+    var yOff=titleH;
+
+    // Anomaly note
+    if(isAnom&&mode==='single'){
+      ctx.font='10px "Segoe UI",system-ui,sans-serif';
+      ctx.fillStyle='#aaaaaa';
+      ctx.fillText('vs. 1991\u20132020 normals',PAD,yOff+anomH/2);
+      yOff+=anomH;
+    }
+
+    // Color scale bar — right-aligned to match grid
+    var sbX=PAD+lw;
+    var sbW=dayInfo.length*cw;
+    var sbY=yOff+8;
+    var sbH=12;
+    var lo2=sc.vals[0],span2=sc.vals[sc.vals.length-1]-lo2;
+    var grad=ctx.createLinearGradient(sbX,0,sbX+sbW,0);
+    sc.vals.forEach(function(v,i){grad.addColorStop((v-lo2)/span2,sc.cols[i]);});
+    ctx.fillStyle=grad;
+    ctx.fillRect(sbX,sbY,sbW,sbH);
+    ctx.strokeStyle='rgba(255,255,255,0.12)';
+    ctx.lineWidth=0.5;
+    ctx.strokeRect(sbX,sbY,sbW,sbH);
+    ctx.font='10px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#888888';
+    ctx.textAlign='right';
+    ctx.textBaseline='middle';
+    ctx.fillText(String(lo),sbX-3,sbY+sbH/2);
+    ctx.textAlign='left';
+    ctx.fillText(String(hi),sbX+sbW+3,sbY+sbH/2);
+    yOff+=scaleH;
+
+    // Grid
+    var gc=document.createElement('canvas');
+    drawGrid(gc,colorGrid,nDays,dayInfo,cw,ch);
+    ctx.drawImage(gc,PAD,yOff);
+    yOff+=gridH;
+
+    // Footer
+    ctx.font='9px "Segoe UI",system-ui,sans-serif';
+    ctx.fillStyle='#666666';
+    ctx.textAlign='left';
+    ctx.textBaseline='middle';
+    ctx.fillText('Eastern Daylight Time  |  Data: IEM & NOAA  |  ContextClimate',PAD,yOff+footH/2);
+
+    // Trigger download
+    var a=document.createElement('a');
+    a.href=comp.toDataURL('image/png');
+    var slug=mode==='single'?String(year):(mLabel||'avg').replace(/\u2013/g,'-');
+    a.download='ISP_Annual_'+dt+'_'+slug+'.png';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }
 
   // Copy Image
   function copyImage(){
@@ -382,7 +468,7 @@ function App(){
 
 
 
-    // Legend — right-aligned, width matches chart
+    // Legend — right-aligned, width matches chart; pill on far right
     out.push(ce('div',{key:'legrow',style:{
       width:chartW,maxWidth:'100%',
       display:'flex',alignItems:'center',justifyContent:'flex-end',
@@ -391,7 +477,13 @@ function App(){
       ce('span',{style:{fontSize:11,color:'#888'}},String(lo)),
       ce('div',{style:{height:12,width:180,background:gradCss(sc),
         border:'1px solid rgba(255,255,255,0.1)',flexShrink:0}}),
-      ce('span',{style:{fontSize:11,color:'#888'}},String(hi))
+      ce('span',{style:{fontSize:11,color:'#888'}},String(hi)),
+      ce('button',{onClick:downloadPNG,style:{
+        background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
+        padding:'3px 14px',fontSize:11,cursor:'pointer',
+        borderRadius:12,fontFamily:FONT,fontWeight:700,marginLeft:12,
+        letterSpacing:'0.02em',flexShrink:0
+      }},'\u2193 PNG')
     ));
 
     var gridRows=[];
@@ -479,6 +571,10 @@ function App(){
           ce('span',{style:{color:'#ccc',fontSize:13,fontFamily:FONT}},
             'Islip, NY \u2502 '+dtLabel+' \u2502 '+modeLabel),
           ce('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+            ce('button',{onClick:downloadPNG,style:{
+              background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
+              padding:'4px 12px',fontSize:12,cursor:'pointer',borderRadius:12,fontFamily:FONT,fontWeight:700
+            }},'\u2193 PNG'),
             ce('button',{onClick:copyImage,style:{
               background:'#0a2a0a',border:'1px solid #4a7a4a',color:'#7DC840',
               padding:'4px 12px',fontSize:12,cursor:'pointer',borderRadius:2,fontFamily:FONT,fontWeight:700
